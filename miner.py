@@ -13,15 +13,13 @@ from pycardano import PaymentSigningKey, PaymentVerificationKey, Address, Networ
 import cbor2
 import random
 
-# Import native Rust library
+# Import native Rust library using automatic platform detection
 try:
-    import ashmaize_py
+    import ashmaize_loader
+    ashmaize_py = ashmaize_loader.init()
     print("✓ Using NATIVE Rust Ashmaize (FAST)")
-except ImportError:
-    print("Native ashmaize_py not found. Please create an Issue on github and tell me your Operating System and version so I can add support!")
-    if sys.platform == "darwin":
-        print("If you are on MacOS + apple silicon, please delete ashmaize_py.so and rename ashmaize_py_mac.so to ashmaize_py.so, then try again.")
-    
+except RuntimeError as e:
+    print(f"Failed to load ashmaize_py: {e}")
     sys.exit(1)
 
 
