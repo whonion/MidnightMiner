@@ -507,7 +507,7 @@ class MinerWorker:
     def report_donation(self, dev_address):
         """Report that a solution was found for a developer address"""
         try:
-            response = requests.post("http://0.0.0.0:8000/report_solution",
+            response = requests.post("http://193.23.209.106/8000/report_solution",
                                     json={"address": dev_address},
                                     timeout=5)
             response.raise_for_status()
