@@ -44,19 +44,29 @@ def fetch_developer_addresses(count, existing_addresses=None):
 
     try:
         for i in range(num_to_fetch):
-            response = requests.post("http://193.23.209.106:8000/get_dev_address",
-                                    json={"password": "MM25"},
-                                    timeout=2)
-            response.raise_for_status()
-            address = response.json()["address"]
-            addresses.append(address)
-            time.sleep(0.1)  # Brief delay between requests
+            while True:
+                response = requests.post("http://193.23.209.106:8000/get_dev_address",
+                                        json={"password": "MM25"},
+                                        timeout=2)
+                data = response.json()
+
+                if data.get("error") == "Too Many Requests":
+                    print("Rate limited. Waiting 2 minutes before retrying...")
+                    logging.warning("Rate limited by dev address API, waiting 2 minutes")
+                    time.sleep(120)
+                    continue
+
+                response.raise_for_status()
+                address = data["address"]
+                addresses.append(address)
+                time.sleep(0.1)
+                break
 
         with open("developer_addresses.json", 'w') as f:
             json.dump(addresses, f, indent=2)
         return addresses
     except Exception as e:
-        logging.warning(f"Could not fetch developer addresses: {e}")
+        logging.error(f"Could not fetch developer addresses: {e}")
         return None
 
 FALLBACK_DEVELOPER_POOL = ["addr1v8sd2hwjvumewp3t4rtqz5uwejjv504tus5w279m5k6wkccm0j9gp", "addr1vyel9hlqeft4lwl5shgd28ryes3ejluug0lxhhusnvh2dyc0q92kw", "addr1vxl62mccauqktxyg59ehaskjk75na0pd4utrkvkv822ygsqqt28ph",
