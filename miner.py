@@ -1067,6 +1067,7 @@ def main():
     wallets_file = "wallets.json"
     challenges_file = "challenges.json"
     donation_enabled = True
+    wallets_count = None
 
     for i, arg in enumerate(sys.argv):
         if arg == '--workers' and i + 1 < len(sys.argv):
@@ -1077,19 +1078,29 @@ def main():
             challenges_file = sys.argv[i + 1]
         elif arg == '--no-donation':
             donation_enabled = False
+        elif arg == '--wallets' and i + 1 < len(sys.argv):
+            wallets_count = int(sys.argv[i + 1])
 
     if num_workers < 1:
         print("Error: --workers must be at least 1")
         return 1
 
+    # If --wallets not specified, default to num_workers
+    if wallets_count is None:
+        wallets_count = num_workers
+    elif wallets_count < 1:
+        print("Error: --wallets must be at least 1")
+        return 1
+
     print(f"Configuration:")
     print(f"  Workers: {num_workers}")
+    print(f"  Wallets to ensure: {wallets_count}")
     print(f"  Wallets file: {wallets_file}")
     print(f"  Challenges file: {challenges_file}")
     print(f"  Developer donations: {'Enabled (5%)' if donation_enabled else 'Disabled'}")
     print()
 
-    logger.info(f"Configuration: workers={num_workers}")
+    logger.info(f"Configuration: workers={num_workers}, wallets_to_ensure={wallets_count}")
 
     # Load or fetch developer addresses
     dev_addresses = load_developer_addresses()
@@ -1119,8 +1130,8 @@ def main():
     wallet_manager = WalletManager(wallets_file)
     api_base = "https://scavenger.prod.gd.midnighttge.io/"
 
-    # Load existing wallets or create enough for all workers
-    wallets = wallet_manager.load_or_create_wallets(num_workers, api_base, donation_enabled)
+    # Load existing wallets or create enough for specified wallet count
+    wallets = wallet_manager.load_or_create_wallets(wallets_count, api_base, donation_enabled)
     logger.info(f"Loaded/created {len(wallets)} wallet(s)")
 
     # Fetch initial statistics
