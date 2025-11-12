@@ -150,15 +150,20 @@ To disable donations, add the `--no-donation` flag:
 python miner.py --no-donation
 ```
 
-### Summarizing NIGHT Balances
+### Checking Wallet Balances and Solutions
 
-To quickly fetch the NIGHT token balances for all wallets stored in your JSON files, use the `sum_night_balance.py` utility:
+To quickly check NIGHT token balances and completed solutions for your wallets, use the `check_earnings.py` utility:
 
-```
-python sum_night_balance.py --wallets-path wallets.json json --proxy-count 30 --proxy-config proxy.json
+```bash
+# Check all wallets
+python check_earnings.py --wallets-path wallets.json --proxy-count 30 --proxy-config proxy.json
+
+# Check a specific wallet address
+python check_earnings.py --address addr1vxask5vpp8p4xddsc3qd63luy4ecf...
 ```
 
 - `--wallets-path` accepts one or more files or directories containing wallet JSON definitions.
+- `--address` checks a specific wallet address directly (ignores --wallets-path).
 - `--proxy-count` limits how many proxy-backed sessions are created simultaneously. For faster results, prepare at least that many proxy entries in `proxy.json`.
 - `--proxy-config` points to the proxy configuration file; if omitted, the script will fall back to direct connections.
 

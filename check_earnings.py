@@ -49,7 +49,7 @@ def extract_addresses_from_json(path: Path) -> Set[str]:
     return addresses
 
 
-def fetch_wallet_statistics(session: requests.Session, wallet_address: str, api_base: str) -> Optional[Tuple[float, dict]]:
+def fetch_wallet_statistics(session: requests.Session, wallet_address: str, api_base: str) -> Optional[Tuple[float, int, dict]]:
     url = f"{api_base.rstrip('/')}/statistics/{wallet_address}"
     try:
         response = session.get(url, timeout=8)
@@ -66,7 +66,13 @@ def fetch_wallet_statistics(session: requests.Session, wallet_address: str, api_
     except Exception:  # noqa: BLE001
         night_tokens = 0.0
 
-    return night_tokens, payload
+    solutions = local_stats.get("crypto_receipts", 0)
+    try:
+        solutions_count = int(solutions)
+    except Exception:  # noqa: BLE001
+        solutions_count = 0
+
+    return night_tokens, solutions_count, payload
 
 
 def mask_wallet_address(address: str, visible: int = 6) -> str:
@@ -100,14 +106,14 @@ def create_sessions(proxy_config_path: str, desired_workers: int) -> Tuple[Tuple
     return tuple(sessions)
 
 
-def process_chunk(session: requests.Session, label: str, chunk: Iterable[str], api_base: str) -> Dict[str, float]:
-    results: Dict[str, float] = {}
+def process_chunk(session: requests.Session, label: str, chunk: Iterable[str], api_base: str) -> Dict[str, Tuple[float, int]]:
+    results: Dict[str, Tuple[float, int]] = {}
     for wallet_address in chunk:
         result = fetch_wallet_statistics(session, wallet_address, api_base)
         if result is None:
             continue
-        night_tokens, _payload = result
-        results[wallet_address] = night_tokens
+        night_tokens, solutions_count, _payload = result
+        results[wallet_address] = (night_tokens, solutions_count)
     return results
 
 
@@ -120,6 +126,11 @@ def main(argv: Optional[Iterable[str]] = None) -> int:
         nargs="+",
         default=["wallets.json"],
         help="Wallet JSON file(s) or directories (space-separated). Example: --wallets-path wallets.json json/",
+    )
+    parser.add_argument(
+        "--address",
+        type=str,
+        help="Check a specific wallet address directly (ignores --wallets-path)",
     )
     parser.add_argument(
         "--api-base",
@@ -140,23 +151,28 @@ def main(argv: Optional[Iterable[str]] = None) -> int:
 
     args = parser.parse_args(list(argv) if argv is not None else None)
 
-    wallet_roots = [Path(entry).resolve() for entry in args.wallets_path]
-    wallet_files = {candidate for root in wallet_roots for candidate in discover_wallet_files(root)}
+    # If --address is specified, use it directly and skip wallet file discovery
+    if args.address:
+        addresses = {args.address}
+        print(f"Checking specific wallet address: {args.address}")
+    else:
+        wallet_roots = [Path(entry).resolve() for entry in args.wallets_path]
+        wallet_files = {candidate for root in wallet_roots for candidate in discover_wallet_files(root)}
 
-    if not wallet_files:
-        joined_sources = ", ".join(str(root) for root in wallet_roots)
-        print(f"No wallet JSON files found at: {joined_sources}")
-        return 1
+        if not wallet_files:
+            joined_sources = ", ".join(str(root) for root in wallet_roots)
+            print(f"No wallet JSON files found at: {joined_sources}")
+            return 1
 
-    addresses: Set[str] = set()
-    for file_path in sorted(wallet_files):
-        addresses |= extract_addresses_from_json(file_path)
+        addresses: Set[str] = set()
+        for file_path in sorted(wallet_files):
+            addresses |= extract_addresses_from_json(file_path)
 
-    if not addresses:
-        print("No wallet addresses discovered.")
-        return 1
+        if not addresses:
+            print("No wallet addresses discovered.")
+            return 1
 
-    print(f"Discovered {len(addresses)} unique wallet addresses from {len(wallet_files)} file(s).")
+        print(f"Discovered {len(addresses)} unique wallet addresses from {len(wallet_files)} file(s).")
 
     sorted_addresses = sorted(addresses)
     session_target = max(1, min(args.proxy_count, len(sorted_addresses)))
@@ -171,7 +187,7 @@ def main(argv: Optional[Iterable[str]] = None) -> int:
             if assigned:
                 chunks.append((session, label, assigned))
 
-        per_wallet: dict[str, float] = {}
+        per_wallet: dict[str, Tuple[float, int]] = {}
 
         with ThreadPoolExecutor(max_workers=len(chunks) or 1) as executor:
             futures = [
@@ -184,14 +200,17 @@ def main(argv: Optional[Iterable[str]] = None) -> int:
                 per_wallet.update(chunk_result)
 
         total_night = 0.0
+        total_solutions = 0
         for address in sorted(per_wallet.keys()):
-            night_tokens = per_wallet[address]
+            night_tokens, solutions_count = per_wallet[address]
             masked_address = mask_wallet_address(address)
             total_night += night_tokens
-            print(f"{masked_address}: {night_tokens:.6f} NIGHT")
+            total_solutions += solutions_count
+            print(f"{masked_address}: {night_tokens:.6f} NIGHT, {solutions_count} solutions")
 
         print("-" * 60)
         print(f"Total NIGHT across {len(per_wallet)} wallet(s): {total_night:.6f}")
+        print(f"Total solutions across {len(per_wallet)} wallet(s): {total_solutions}")
 
         missing = addresses - per_wallet.keys()
         if missing:
