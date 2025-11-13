@@ -474,27 +474,63 @@ class WalletManager:
         cose_sign1 = [protected_encoded, unprotected, payload, signature_bytes]
         wallet_data['signature'] = cbor2.dumps(cose_sign1).hex()
 
-    def _register_wallet_with_api(self, wallet_data, api_base):
+    def _register_wallet_with_api(self, wallet_data, api_base, retry_indefinitely=False, max_retries=3):
         """Register a wallet with the API. Returns True if successful or already registered.
-        Raises an exception if registration fails."""
+
+        Args:
+            wallet_data: Wallet data dictionary
+            api_base: API base URL
+            retry_indefinitely: If True, retries forever. If False, retries up to max_retries.
+            max_retries: Maximum number of retry attempts when retry_indefinitely=False
+
+        Returns:
+            True if registration successful or wallet already registered
+
+        Raises:
+            Exception: If retry_indefinitely=False and max_retries exceeded
+        """
         url = f"{api_base}/register/{wallet_data['address']}/{wallet_data['signature']}/{wallet_data['pubkey']}"
-        try:
-            response = http_post(url, json={})
-            response.raise_for_status()
-            return True
-        except requests.exceptions.HTTPError as e:
-            if e.response.status_code == 400:
-                error_msg = e.response.json().get('message', '')
-                if 'already' in error_msg.lower():
-                    return True
-            # Registration failed - raise exception with details
-            raise Exception(f"Wallet registration failed: HTTP {e.response.status_code} - {e.response.text}")
-        except requests.exceptions.RequestException as e:
-            # Network error
-            raise Exception(f"Wallet registration failed: Network error - {str(e)}")
-        except Exception as e:
-            # Other error
-            raise Exception(f"Wallet registration failed: {str(e)}")
+
+        attempt = 0
+        while True:
+            attempt += 1
+            try:
+                response = http_post(url, json={})
+                response.raise_for_status()
+                return True
+            except KeyboardInterrupt:
+                raise
+            except requests.exceptions.HTTPError as e:
+                if e.response.status_code == 400:
+                    error_msg = e.response.json().get('message', '')
+                    if 'already' in error_msg.lower():
+                        return True
+                # Registration failed - log and maybe retry
+                logging.warning(f"Wallet registration failed (attempt {attempt}{'/' + str(max_retries) if not retry_indefinitely else ''}): HTTP {e.response.status_code} - {e.response.text}")
+
+                if not retry_indefinitely and attempt >= max_retries:
+                    raise Exception(f"Failed to register wallet after {max_retries} attempts: HTTP {e.response.status_code}")
+
+                logging.info(f"Retrying in 60 seconds...")
+                time.sleep(60)
+            except requests.exceptions.RequestException as e:
+                # Network error - log and maybe retry
+                logging.warning(f"Wallet registration failed (attempt {attempt}{'/' + str(max_retries) if not retry_indefinitely else ''}): Network error - {str(e)}")
+
+                if not retry_indefinitely and attempt >= max_retries:
+                    raise Exception(f"Failed to register wallet after {max_retries} attempts: {str(e)}")
+
+                logging.info(f"Retrying in 60 seconds...")
+                time.sleep(60)
+            except Exception as e:
+                # Other error - log and maybe retry
+                logging.warning(f"Wallet registration failed (attempt {attempt}{'/' + str(max_retries) if not retry_indefinitely else ''}): {str(e)}")
+
+                if not retry_indefinitely and attempt >= max_retries:
+                    raise Exception(f"Failed to register wallet after {max_retries} attempts: {str(e)}")
+
+                logging.info(f"Retrying in 60 seconds...")
+                time.sleep(60)
 
     def load_or_create_wallets(self, num_wallets, api_base, donation_enabled=True):
         first_time_setup = False
@@ -535,9 +571,10 @@ class WalletManager:
             print(f"  Wallet {len(self.wallets)}: {wallet['address'][:40]}...")
 
             # Register the wallet immediately - this is critical
+            # On startup, only retry 3 times then exit if it fails
             print(f"    Registering wallet with API...")
             try:
-                self._register_wallet_with_api(wallet, api_base)
+                self._register_wallet_with_api(wallet, api_base, retry_indefinitely=False, max_retries=3)
                 print(f"    ✓ Registered successfully")
                 # Only add wallet to list after successful registration
                 self.wallets.append(wallet)
@@ -591,21 +628,15 @@ class WalletManager:
         return None
 
     def create_new_wallet(self, api_base):
-        """Generate and sign a new wallet on-the-fly.
-        Raises exception if registration fails."""
+        """Generate and sign a new wallet on-the-fly during runtime.
+        Retries indefinitely until registration succeeds."""
         # Generate wallet outside lock (it's just crypto operations)
         wallet = self.generate_wallet()
         self.sign_terms(wallet, api_base)
 
-        # Register the wallet immediately - raises exception on failure
-        try:
-            self._register_wallet_with_api(wallet, api_base)
-        except Exception as e:
-            logging.error(f"Failed to register dynamically created wallet: {e}")
-            print("\nFATAL ERROR: Cannot register new wallet with API")
-            print("Mining cannot continue without wallet registration.\n")
-            print("Please check your network connection and try again.")
-            raise
+        # Register the wallet immediately - retries indefinitely
+        # This is called during runtime worker spawning, not startup
+        self._register_wallet_with_api(wallet, api_base, retry_indefinitely=True)
 
         # Add to list and save only after successful registration
         with self._lock:
