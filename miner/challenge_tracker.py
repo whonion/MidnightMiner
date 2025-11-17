@@ -72,7 +72,7 @@ class ChallengeTracker:
         - Must not be already solved by this wallet.
         - Must have > 120s remaining until latest_submission.
         - Prefer the EASIEST challenge first:
-            * Easiest = highest numeric difficulty mask.
+            * Easiest = lowest numeric difficulty value.
         - Tie-breaker: earlier deadline first.
         """
         def find_challenge(challenges):
@@ -120,8 +120,8 @@ class ChallengeTracker:
                     best_diff = difficulty_val
                     best_deadline = deadline
                 else:
-                    # Prefer EASIER (numerically HIGHER) difficulty mask
-                    if difficulty_val > best_diff:
+                    # Prefer EASIER (numerically LOWER) difficulty value
+                    if difficulty_val < best_diff:
                         best = data
                         best_diff = difficulty_val
                         best_deadline = deadline
