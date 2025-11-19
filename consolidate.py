@@ -167,6 +167,8 @@ def main():
     destination_address = None
     api_base = "https://scavenger.prod.gd.midnighttge.io"
     undo_mode = False
+    use_defensio = False
+    registration_portal = "https://sm.midnight.gd"
 
     for i, arg in enumerate(sys.argv):
         if arg == '--wallets-file' and i + 1 < len(sys.argv):
@@ -175,14 +177,19 @@ def main():
             destination_address = sys.argv[i + 1]
         elif arg == '--undo':
             undo_mode = True
+        elif arg == '--defensio':
+            use_defensio = True
+            api_base = "https://mine.defensio.io/api"
+            registration_portal = "https://defensio.io/mine"
         elif arg == '--help' or arg == '-h':
-            print("Usage: python consolidate.py [--destination <address> | --undo] [--wallets-file <file>]")
+            print("Usage: python consolidate.py [--destination <address> | --undo] [--wallets-file <file>] [--defensio]")
             print()
             print("Options:")
             print("  --destination <address>     Cardano address to receive all earnings")
-            print("                              (must be registered at https://sm.midnight.gd)")
+            print("                              (must be registered at the scavenger hunt portal)")
             print("  --undo                      Undo donations by registering each wallet to itself")
             print("  --wallets-file <file>       Wallet file to use (default: wallets.json)")
+            print("  --defensio                  Use Defensio API instead of Midnight API")
             print()
             return 0
 
@@ -281,7 +288,7 @@ def main():
     print("         destination address.")
     print()
     print("NOTE: The destination address MUST be registered at:")
-    print("      https://sm.midnight.gd")
+    print(f"      {registration_portal}")
     print("="*70)
     print()
     confirm = input("Type 'CONFIRM' to proceed: ").strip()
@@ -323,7 +330,7 @@ def main():
         print("Some donations failed. You can run this script again to retry.")
         print()
         print("If you received 'not registered' errors, make sure your")
-        print("destination address is registered at: https://sm.midnight.gd")
+        print(f"destination address is registered at: {registration_portal}")
     else:
         print(f"All NIGHT rewards from currently active wallets will be redeemable from: {destination_address}.")
         print("Run this script again at the end of the scavenger hunt to consolidate any newly generated wallets.")

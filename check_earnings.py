@@ -148,8 +148,17 @@ def main(argv: Optional[Iterable[str]] = None) -> int:
         default=16,
         help="Maximum number of concurrent proxy sessions (default: 16)",
     )
+    parser.add_argument(
+        "--defensio",
+        action="store_true",
+        help="Use Defensio API instead of Midnight API",
+    )
 
     args = parser.parse_args(list(argv) if argv is not None else None)
+
+    # Override API base if using Defensio
+    if args.defensio:
+        args.api_base = "https://mine.defensio.io/api"
 
     # If --address is specified, use it directly and skip wallet file discovery
     if args.address:
