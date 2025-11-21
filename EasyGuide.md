@@ -58,7 +58,12 @@ py miner.py --workers 4
 
 Replace `4` with the number of workers you want to use. Each worker uses roughly one CPU core and about 1GB of memory. The miner will automatically create enough wallets for all workers and rotate through them as puzzles are completed.
 
-> **Tip**: If you have a 6-core processor, try `--workers 6`.
+**Consolidation**: It is recommended to use automatic consolidation with the `--consolidate` flag. See the consolidation section below for more info.
+```
+py miner.py ... --consolidate <destination address>
+```
+
+It is IMPERITIVE that the destination address is registered.
 
 ## ⚠️ Update Regularly
 

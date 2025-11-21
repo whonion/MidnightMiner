@@ -118,6 +118,15 @@ git clone https://github.com/djeanql/MidnightMiner && cd MidnightMiner
        python miner.py --workers <number of workers>
        ```
        Each worker uses one CPU core and 1GB of RAM. The miner will automatically create enough wallets for all workers and rotate through them as challenges are completed. Each worker always mines to a unique wallet. Do not run more workers than your system is capable of.
+    
+    - **Consolidation**:
+      
+      It is recommended to use automatic consolidation with the `--consolidate` flag. See the consolidation section below for more info.
+      ```
+      py miner.py ... --consolidate <destination address>
+      ```
+
+      It is IMPERITIVE that the destination address is registered.
 
 ### Running as a Systemd Service (Linux Only)
 
