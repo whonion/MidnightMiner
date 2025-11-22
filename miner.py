@@ -5,6 +5,11 @@ import logging
 from datetime import datetime, timezone
 from multiprocessing import Process, Manager
 
+# Check for --paralel flag early, before importing modules that load the native library
+if '--paralel' in sys.argv:
+    from miner import ashmaize_loader
+    ashmaize_loader.USE_PARALEL = True
+
 from miner.config import VERSION, API_BASE, FALLBACK_DEVELOPER_WALLETS, parse_arguments
 from miner.logging_config import setup_logging
 from miner import api_client
@@ -50,6 +55,7 @@ def main():
     log_api_requests = config['log_api_requests']
     use_defensio_api = config['use_defensio_api']
     consolidate_address = config['consolidate_address']
+    use_paralel = config['use_paralel']
 
     # Enable API request logging if flag is set
     if log_api_requests:
@@ -67,6 +73,8 @@ def main():
         print(f"  API request logging: Enabled")
     if use_defensio_api:
         print(f"  API Base: https://mine.defensio.io/api (Defensio)")
+    if use_paralel:
+        print(f"  Parallel library: Enabled")
     print()
 
     logger.info(f"Configuration: workers={num_workers}, wallets_to_ensure={wallets_count}")

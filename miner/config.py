@@ -35,6 +35,7 @@ def parse_arguments():
     log_api_requests = False
     use_defensio_api = False
     consolidate_address = None
+    use_paralel = False
 
     for i, arg in enumerate(sys.argv):
         if arg == '--workers' and i + 1 < len(sys.argv):
@@ -53,6 +54,8 @@ def parse_arguments():
             use_defensio_api = True
         elif arg == '--consolidate' and i + 1 < len(sys.argv):
             consolidate_address = sys.argv[i + 1]
+        elif arg == '--paralel':
+            use_paralel = True
 
     if num_workers < 1:
         print("Error: --workers must be at least 1")
@@ -73,5 +76,6 @@ def parse_arguments():
         'wallets_count': wallets_count,
         'log_api_requests': log_api_requests,
         'use_defensio_api': use_defensio_api,
-        'consolidate_address': consolidate_address
+        'consolidate_address': consolidate_address,
+        'use_paralel': use_paralel
     }
