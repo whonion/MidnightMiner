@@ -100,7 +100,7 @@ git clone https://github.com/djeanql/MidnightMiner && cd MidnightMiner
      ```bash
      .\venv\Scripts\Activate.ps1
      ```
-	 *Note: if you are running running powershell as administrator, you will get an error about permission to run scripts and will 
+	 *Note: if you are NOT running running powershell as administrator, you will get an error about permission to run scripts and will 
 	 need to escalate permission*: 
 	 ```bash
 	 Set-ExecutionPolicy -ExecutionPolicy RemoteSigned -Scope CurrentUser
