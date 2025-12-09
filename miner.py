@@ -5,6 +5,11 @@ import logging
 from datetime import datetime, timezone
 from multiprocessing import Process, Manager
 
+# Check for --parallel flag early, before importing modules that load the native library
+if '--parallel' in sys.argv:
+    from miner import ashmaize_loader
+    ashmaize_loader.USE_PARALLEL = True
+
 from miner.config import VERSION, API_BASE, FALLBACK_DEVELOPER_WALLETS, parse_arguments
 from miner.logging_config import setup_logging
 from miner import api_client
@@ -16,13 +21,13 @@ from miner.statistics import fetch_total_night_balance
 from miner.dashboard import display_dashboard
 from miner.worker_process import worker_process
 
-def display_consolidation_warning():
+def display_consolidation_warning(token_name="NIGHT"):
     print()
     print("="*70)
     print("⚠ IMPORTANT: Wallet Consolidation Recommended ⚠")
     print("="*70)
     print("This miner uses multiple wallets to mine efficiently.")
-    print("To avoid transaction fees you need to consolidate your NIGHT")
+    print(f"To avoid transaction fees you need to consolidate your {token_name}")
     print("into a single wallet (if you have not already done so).")
     print("Check the README for instructions.")
     print()
@@ -30,10 +35,6 @@ def display_consolidation_warning():
 def main():
     """Main entry point with continuous worker spawning"""
     logger = setup_logging()
-
-    display_consolidation_warning()
-    time.sleep(3)
-    print()
 
     print("="*70)
     print(f"MIDNIGHT MINER - v{VERSION}")
@@ -52,6 +53,9 @@ def main():
     donation_enabled = config['donation_enabled']
     wallets_count = config['wallets_count']
     log_api_requests = config['log_api_requests']
+    use_defensio_api = config['use_defensio_api']
+    consolidate_address = config['consolidate_address']
+    use_parallel = config['use_parallel']
 
     # Enable API request logging if flag is set
     if log_api_requests:
@@ -63,8 +67,14 @@ def main():
     print(f"  Wallets file: {wallets_file}")
     print(f"  Challenges file: {challenges_file}")
     print(f"  Developer donations: {'Enabled (5%)' if donation_enabled else 'Disabled'}")
+    if consolidate_address:
+        print(f"  Consolidate to: {consolidate_address}")
     if log_api_requests:
         print(f"  API request logging: Enabled")
+    if use_defensio_api:
+        print(f"  API Base: https://mine.defensio.io/api (Defensio)")
+    if use_parallel:
+        print(f"  Parallel library: Enabled")
     print()
 
     logger.info(f"Configuration: workers={num_workers}, wallets_to_ensure={wallets_count}")
@@ -94,12 +104,19 @@ def main():
         if not dev_addresses:
             dev_addresses = FALLBACK_DEVELOPER_WALLETS
 
-    wallet_manager = WalletManager(wallets_file)
+    wallet_manager = WalletManager(wallets_file, use_defensio_api, consolidate_address)
     api_base = API_BASE
+
+    if use_defensio_api:
+        api_base = "https://mine.defensio.io/api"
+        api_client.API_BASE = api_base
 
     # Load existing wallets or create enough for specified wallet count
     wallets = wallet_manager.load_or_create_wallets(wallets_count, api_base, donation_enabled)
     logger.info(f"Loaded/created {len(wallets)} wallet(s)")
+
+    # Determine token name based on API
+    token_name = "DFO" if use_defensio_api else "NIGHT"
 
     # Fetch initial statistics
     print("\nFetching initial statistics...")
@@ -109,27 +126,44 @@ def main():
     snapshot_balance, snapshot_timestamp = load_latest_balance_snapshot()
 
     # Try to fetch fresh balance
-    fresh_balance = fetch_total_night_balance(wallet_manager, api_base)
+    fresh_balance = fetch_total_night_balance(wallet_manager, api_base, use_defensio_api)
 
     if fresh_balance is not None:
         # Fresh balance fetched successfully (even if 0.0)
         initial_night = fresh_balance
-        print(f"✓ Initial NIGHT balance: {initial_night:.2f}")
+        print(f"✓ Initial {token_name} balance: {initial_night:.2f}")
         # Save balance snapshot if it's different from snapshot (or if no snapshot exists)
         if snapshot_balance is None or abs(fresh_balance - snapshot_balance) > 0.01:
             save_balance_snapshot(fresh_balance)
     elif snapshot_balance is not None:
         # Use snapshot as fallback
         initial_night = snapshot_balance
-        print(f"✓ Loaded NIGHT balance from snapshot: {initial_night:.2f} (from {snapshot_timestamp})")
+        print(f"✓ Loaded {token_name} balance from snapshot: {initial_night:.2f} (from {snapshot_timestamp})")
         print("  (Failed to fetch fresh balance, using cached snapshot)")
     else:
         # No balance available
         initial_night = 0.0
-        print("⚠ Could not load NIGHT balance (no snapshot and fetch failed)")
+        print(f"⚠ Could not load {token_name} balance (no snapshot and fetch failed)")
 
     initial_completed = wallet_manager.count_total_challenges(challenge_tracker)
     print(f"✓ Initial challenges completed: {initial_completed}")
+
+    # Verify we can fetch challenges from API before starting workers
+    print("\nVerifying API connectivity...")
+    test_challenge = api_client.get_current_challenge(api_base)
+    if test_challenge is None:
+        print()
+        print("="*70)
+        print("ERROR: Cannot retrieve current challenge from API")
+        print("="*70)
+        print(f"API Base: {api_base}")
+        print("\nThe API may be down or unreachable.")
+        print("Please check your internet connection and try again later.")
+        print("="*70)
+        logger.error("Failed to retrieve current challenge on startup - API unavailable")
+        return 1
+
+    print(f"✓ API connectivity verified (challenge: {test_challenge['challenge_id'][:20]}...)")
 
     print()
     print("="*70)
@@ -180,7 +214,14 @@ def main():
                             break
 
             if wallet is None:
-                # No available wallet found, create a new one
+                # No available wallet found - check if API is accessible before creating new wallet
+                # This prevents infinite wallet creation when API is down
+                api_challenge = api_client.get_current_challenge(api_base)
+                if api_challenge is None:
+                    logger.warning(f"Worker {worker_id}: Cannot spawn - API unreachable and no available wallets with unsolved challenges")
+                    return None
+
+                # API is accessible, safe to create a new wallet
                 logger.info(f"No available wallets for worker {worker_id}, creating new wallet")
                 wallet = wallet_manager.create_new_wallet(api_base)
                 logger.info(f"Created new wallet {wallet['address'][:20]}... for worker {worker_id}")
@@ -188,7 +229,7 @@ def main():
             # Assign dev address statically based on worker_id
             dev_address = dev_addresses[worker_id % len(dev_addresses)]
 
-            p = Process(target=worker_process, args=(wallet, worker_id, status_dict, challenges_file, dev_address, failed_solutions_count, failed_solutions_lock, donation_enabled))
+            p = Process(target=worker_process, args=(wallet, worker_id, status_dict, challenges_file, dev_address, failed_solutions_count, failed_solutions_lock, donation_enabled, api_base))
             p.start()
             workers[worker_id] = (p, wallet)
             logger.info(f"Started worker {worker_id} with wallet {wallet['address'][:20]}...")
@@ -232,7 +273,7 @@ def main():
     logger.info(f"All {num_workers} workers started successfully")
 
     try:
-        display_dashboard(status_dict, num_workers, wallet_manager, challenge_tracker, initial_completed, night_balance_dict, api_base, start_time)
+        display_dashboard(status_dict, num_workers, wallet_manager, challenge_tracker, initial_completed, night_balance_dict, api_base, start_time, use_defensio_api)
     except KeyboardInterrupt:
         print("\n\nStopping all miners...")
         logger.info("Received shutdown signal, stopping all workers...")
@@ -274,7 +315,7 @@ def main():
     logger.info(f"Session statistics: {session_total_completed} new challenges solved")
     logger.info("Midnight Miner shutdown complete\n\n")
 
-    display_consolidation_warning()
+    display_consolidation_warning(token_name)
 
     return 0
 

@@ -87,6 +87,7 @@ usage() {
     echo "Options:"
     echo "  --workers N          Set the number of workers (required for setup)"
     echo "  --user USER          Set the user to run the service as (default: current user)"
+    echo "  --defensio           Enable Defensio API mode (mines DFO instead of NIGHT)"
     echo "  --install            Install and enable the systemd service"
     echo "  --update             Update existing service file and reload systemd"
     echo "  --uninstall          Stop, disable, and remove the systemd service"
@@ -100,6 +101,7 @@ usage() {
     echo "Examples:"
     echo "  $0 --workers 4                    # Set worker count to 4"
     echo "  $0 --workers 4 --install         # Set workers to 4 and install service"
+    echo "  $0 --workers 4 --defensio        # Set workers to 4 with Defensio API"
     echo "  $0 --workers 8 --update          # Update workers to 8 and reload service"
     echo "  $0 --update                      # Update service with existing config"
     echo "  $0 --workers 8 --user myuser     # Set workers to 8 with specific user"
@@ -147,13 +149,16 @@ setup_venv() {
 
 create_env_file() {
     local workers=$1
+    local defensio=$2
     echo -e "${GREEN}Creating/updating environment file: ${ENV_FILE}${NC}"
     cat > "${ENV_FILE}" << EOF
 # Midnight Miner Environment Configuration
 # Set the number of workers to use
 WORKERS=${workers}
+# Enable Defensio API mode (true/false)
+DEFENSIO=${defensio}
 EOF
-    echo -e "${GREEN}✓ Environment file created with WORKERS=${workers}${NC}"
+    echo -e "${GREEN}✓ Environment file created with WORKERS=${workers}, DEFENSIO=${defensio}${NC}"
 }
 
 create_service_file() {
@@ -196,7 +201,7 @@ User=${user}
 WorkingDirectory=${SCRIPT_DIR}
 EnvironmentFile=${ENV_FILE}
 ExecStartPre=-/usr/bin/git pull
-ExecStart=${VENV_PYTHON} ${MINER_SCRIPT} --workers \${WORKERS}
+ExecStart=/bin/bash -c 'if [ "\${DEFENSIO}" = "true" ]; then exec ${VENV_PYTHON} ${MINER_SCRIPT} --workers \${WORKERS} --defensio; else exec ${VENV_PYTHON} ${MINER_SCRIPT} --workers \${WORKERS}; fi'
 Restart=always
 RestartSec=10
 StandardOutput=journal
@@ -255,8 +260,8 @@ update_service() {
         setup_venv
     fi
 
-    # If workers or user are provided, update the service file
-    if [ -n "$WORKERS" ] || [ -n "$USER" ]; then
+    # If workers, user, or defensio are provided, update the service file
+    if [ -n "$WORKERS" ] || [ -n "$USER" ] || [ "$DEFENSIO" != "false" ]; then
         if [ -z "$WORKERS" ]; then
             # Load existing workers from env file if it exists
             if [ -f "${ENV_FILE}" ]; then
@@ -267,7 +272,15 @@ update_service() {
             fi
         fi
 
-        create_env_file "$WORKERS"
+        # Load existing DEFENSIO setting if not explicitly set
+        if [ "$DEFENSIO" = "false" ] && [ -f "${ENV_FILE}" ]; then
+            EXISTING_DEFENSIO=$(grep "^DEFENSIO=" "${ENV_FILE}" | cut -d'=' -f2)
+            if [ -n "$EXISTING_DEFENSIO" ]; then
+                DEFENSIO="$EXISTING_DEFENSIO"
+            fi
+        fi
+
+        create_env_file "$WORKERS" "$DEFENSIO"
         create_service_file "${USER:-$(whoami)}"
     elif [ ! -f "${SERVICE_FILE}" ]; then
         echo -e "${RED}Error: Service file not found. Provide --workers or ensure service file exists.${NC}"
@@ -342,6 +355,7 @@ start_service() {
 # Parse arguments
 WORKERS=""
 USER=""
+DEFENSIO="false"
 INSTALL=false
 UPDATE=false
 UNINSTALL=false
@@ -360,6 +374,10 @@ while [[ $# -gt 0 ]]; do
         --user)
             USER="$2"
             shift 2
+            ;;
+        --defensio)
+            DEFENSIO="true"
+            shift
             ;;
         --install)
             INSTALL=true
@@ -455,7 +473,7 @@ if [ -n "$WORKERS" ]; then
     fi
 
     setup_venv
-    create_env_file "$WORKERS"
+    create_env_file "$WORKERS" "$DEFENSIO"
     create_service_file "${USER:-$(whoami)}"
 
     if [ "$INSTALL" = true ]; then

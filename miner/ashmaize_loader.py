@@ -7,6 +7,9 @@ import sys
 import os
 import platform
 
+# Global flag for using parallel library variant
+USE_PARALLEL = False
+
 
 def get_platform_path():
     """
@@ -51,6 +54,11 @@ def get_platform_path():
         )
 
     platform_dir = platform_map[platform_key]
+
+    # Append -paralel suffix if using parallel library
+    if USE_PARALLEL:
+        platform_dir = f"{platform_dir}-paralel"
+
     # When in miner/ subdirectory, go up one level to find libs/
     base_dir = os.path.dirname(os.path.dirname(__file__))
     lib_path = os.path.join(base_dir, 'libs', platform_dir)
@@ -64,6 +72,13 @@ def get_platform_path():
     binary_path = os.path.join(lib_path, binary_name)
 
     if not os.path.exists(binary_path):
+        if USE_PARALLEL:
+            raise RuntimeError(
+                f"Parallel library not found for {system.capitalize()} {arch}\n"
+                f"Expected location: {binary_path}\n\n"
+                f"The --parallel option requires a parallel-enabled library at libs/{platform_dir}/\n"
+                f"This library is not available for your platform."
+            )
         raise RuntimeError(
             f"Binary not found for {system.capitalize()} {arch}\n"
             f"Expected location: {binary_path}\n\n"

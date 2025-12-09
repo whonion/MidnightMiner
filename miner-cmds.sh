@@ -45,11 +45,12 @@ usage() {
     echo "  logs-tail   Show last 100 lines of logs"
     echo "  enable      Enable service to start on boot"
     echo "  disable     Disable service from starting on boot"
-    echo "  workers     Show current worker count from env file"
+    echo "  config      Show current configuration (workers, defensio mode)"
     echo "  help        Show this help message"
     echo ""
     echo "Examples:"
     echo "  $0 status      # Check if service is running"
+    echo "  $0 config      # Show current configuration"
     echo "  $0 logs        # Follow service logs"
     echo "  $0 restart     # Restart the service"
 }
@@ -150,7 +151,7 @@ disable_service() {
     fi
 }
 
-show_workers() {
+show_config() {
     SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
     ENV_FILE="${SCRIPT_DIR}/midnight-miner.env"
 
@@ -161,12 +162,21 @@ show_workers() {
     fi
 
     WORKERS=$(grep "^WORKERS=" "${ENV_FILE}" | cut -d'=' -f2)
+    DEFENSIO=$(grep "^DEFENSIO=" "${ENV_FILE}" | cut -d'=' -f2)
+
     if [ -z "$WORKERS" ]; then
         echo -e "${RED}Error: WORKERS not found in ${ENV_FILE}${NC}"
         exit 1
     fi
 
-    echo -e "${BLUE}Current worker count: ${GREEN}${WORKERS}${NC}"
+    echo -e "${BLUE}Current Configuration:${NC}"
+    echo -e "  Workers:  ${GREEN}${WORKERS}${NC}"
+
+    if [ "$DEFENSIO" = "true" ]; then
+        echo -e "  Mode:     ${GREEN}Defensio (DFO mining)${NC}"
+    else
+        echo -e "  Mode:     ${GREEN}Midnight (NIGHT mining)${NC}"
+    fi
 }
 
 # Parse command
@@ -197,8 +207,8 @@ case "$COMMAND" in
     disable)
         disable_service
         ;;
-    workers)
-        show_workers
+    config|workers)
+        show_config
         ;;
     help|--help|-h)
         usage

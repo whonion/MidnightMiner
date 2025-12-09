@@ -130,6 +130,7 @@ def create_backup(file_path):
 def parse_args():
     """Parse simple command-line arguments."""
     wallets_file = DEFAULT_WALLETS_FILE
+    use_defensio = False
     args = sys.argv[1:]
     i = 0
     while i < len(args):
@@ -137,13 +138,21 @@ def parse_args():
         if arg in ("--wallets", "--wallets-file") and i + 1 < len(args):
             wallets_file = args[i + 1]
             i += 2
+        elif arg == "--defensio":
+            use_defensio = True
+            i += 1
         else:
             i += 1
-    return wallets_file
+    return wallets_file, use_defensio
 
 
 def main():
-    wallets_file = parse_args()
+    global API_BASE
+    wallets_file, use_defensio = parse_args()
+
+    # Update API_BASE if using Defensio
+    if use_defensio:
+        API_BASE = "https://mine.defensio.io/api"
 
     if not os.path.exists(SOLUTIONS_FILE):
         print(f"Error: {SOLUTIONS_FILE} not found")

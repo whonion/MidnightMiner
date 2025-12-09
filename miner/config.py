@@ -33,6 +33,9 @@ def parse_arguments():
     donation_enabled = True
     wallets_count = None
     log_api_requests = False
+    use_defensio_api = False
+    consolidate_address = None
+    use_parallel = False
 
     for i, arg in enumerate(sys.argv):
         if arg == '--workers' and i + 1 < len(sys.argv):
@@ -47,6 +50,12 @@ def parse_arguments():
             wallets_count = int(sys.argv[i + 1])
         elif arg == '--log-api-requests':
             log_api_requests = True
+        elif arg == '--defensio':
+            use_defensio_api = True
+        elif arg == '--consolidate' and i + 1 < len(sys.argv):
+            consolidate_address = sys.argv[i + 1]
+        elif arg == '--parallel':
+            use_parallel = True
 
     if num_workers < 1:
         print("Error: --workers must be at least 1")
@@ -65,5 +74,8 @@ def parse_arguments():
         'challenges_file': challenges_file,
         'donation_enabled': donation_enabled,
         'wallets_count': wallets_count,
-        'log_api_requests': log_api_requests
+        'log_api_requests': log_api_requests,
+        'use_defensio_api': use_defensio_api,
+        'consolidate_address': consolidate_address,
+        'use_parallel': use_parallel
     }
